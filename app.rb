@@ -21,8 +21,14 @@ GITHUB_APP_ID = ENV.fetch("GITHUB_APP_ID")
 GITHUB_APP_URL = ENV.fetch("GITHUB_APP_URL")
 SESSION_SECRET = ENV.fetch("SESSION_SECRET")
 
-enable :sessions
-set :session_secret, SESSION_SECRET
+
+configure do
+  enable :sessions
+  set :session_secret, SESSION_SECRET
+  Octokit.default_media_type = "application/vnd.github.machine-man-preview+json"
+  Octokit.auto_paginate = true
+  Octokit.user_agent = "#{Octokit.user_agent}: inspector-app"
+end
 @accept_header = "application/vnd.github.machine-man-preview+json"
 
 # Check whether the user has an access token.
