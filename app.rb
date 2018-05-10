@@ -6,9 +6,10 @@ require 'dotenv'
 require "jwt"
 Dotenv.load
 
+$stdout.sync = true
+
 CLIENT_ID = ENV.fetch("GITHUB_CLIENT_ID")
 CLIENT_SECRET = ENV["GITHUB_CLIENT_SECRET"]
-GITHUB_API_ENDPOINT = "https://api.github.com/"
 GITHUB_KEY_LOCATION = ENV.fetch("GITHUB_KEY_LOCATION", nil)
 if GITHUB_KEY_LOCATION.nil?
   GITHUB_APP_KEY = ENV.fetch("GITHUB_APP_KEY")
@@ -22,45 +23,24 @@ SESSION_SECRET = ENV.fetch("SESSION_SECRET")
 
 enable :sessions
 set :session_secret, SESSION_SECRET
-
-
-# Ask the user to authorise the app.
-def authenticate!
-  @client = Octokit::Client.new
-  url = @client.authorize_url(CLIENT_ID)
-  redirect url
-end
-
-def install!
-  redirect GITHUB_APP_URL
-end
+@accept_header = "application/vnd.github.machine-man-preview+json"
 
 # Check whether the user has an access token.
 def authenticated?
-  session[:access_token]
-end
-
-def installed?
-  !session[:installation_list].nil? && session[:installation_list].count > 0
+  true
 end
 
 def check_installations
-  @access_token = session[:access_token]
   installation_ids = []
   begin
-    @client = Octokit::Client.new :access_token => @access_token
-    response = @client.find_user_installations
-    
-    installation_count = response.total_count
-    if installation_count > 0
-      response.installations.each do |installation|
-        installation_ids.push(installation.id)
-      end
+    response = installations    
+    response.each do |installation|
+      installation_ids.push(installation.id)
     end
+
     session[:installation_list] = installation_ids
   rescue => e
     session[:installation_list] = nil
-    authenticate!
   end
 end
 
@@ -80,10 +60,18 @@ def get_jwt
   JWT.encode(payload, private_key, "RS256")
 end
 
+def set_jwt_client
+  begin
+    @jwt_client = Octokit::Client.new(:bearer_token => get_jwt, :accept => @accept_header)
+  rescue => error
+    puts error
+  end
+end
+
 def get_app_token(installation_id)
   return_token = ''
   begin
-    @jwt_client = Octokit::Client.new(:bearer_token => get_jwt, :accept => @accept_header)
+    set_jwt_client
     new_token = @jwt_client.create_app_installation_access_token(installation_id, :accept => @accept_header)
     return_token = new_token.token
   rescue => error
@@ -93,23 +81,6 @@ def get_app_token(installation_id)
   return return_token
 end
 
-# Check whether the user's access token is valid.
-def check_access_token
-  @access_token = session[:access_token]
-
-  begin
-    @client = Octokit::Client.new :access_token => @access_token
-    @user = @client.find_user_installations
-  rescue => e
-    # The token has been revoked, so invalidate the token in the session.
-    session[:access_token] = nil
-    authenticate!
-  end
-end
-
-def repository_hooks
-
-end
 
 def select_installation!(installation_id)
   session[:selected_installation] = installation_id
@@ -122,95 +93,43 @@ end
 get "/reset" do 
   session[:selected_installation] = nil
   session[:installation_list] = nil
-  session[:access_token] = nil
   redirect "/"
 end
 
 def installations
-  @client = Octokit::Client.new(:access_token => session[:access_token])
-  @client.find_user_installations[:installations]
-end
-
-# Get the user's recent commits from their public activity feed.
-def recent_commits
-  
-  return "" if !installation_selected?
-  
-  installation_id = session[:selected_installation]
-  # installation_token = get_app_token(installation_id)
-
-  @client = Octokit::Client.new(:access_token => session[:access_token])
-  response = @client.find_installation_repositories_for_user(installation_id)
-
-  commits = response[:repositories]
-  commits.take 15
-end
-
-# Wrapper route for redirecting the user to authorise the app.
-get "/auth" do
-  authenticate!
-end
-
-get "/install" do 
-  install!
+  set_jwt_client
+  begin
+    results = @jwt_client.find_installations( :accept => @accept_header)
+    results
+  rescue => e
+    puts e
+  end
 end
 
 # Serve the main page.
 get "/" do
-  if !authenticated?
-    return erb :how, :locals => { :authenticated => authenticated? }
-  end
-  check_access_token
   check_installations
-  if !installed?  
-    return erb :install, :locals => { :authenticated => authenticated?, :installed => installed?}
-  else
-    erb :index, :locals => {
-      :authenticated => authenticated?, :recent_commits => recent_commits, :installations => installations, :installation_selected => installation_selected?}
-  end
-end
-
-# Return a all the Service hooks installed on a Repository
-def get_hook_list(installation_id, repository_name, local_client)
-  hook_list = Array.new
   
-  results = local_client.hooks(repository_name, :accept => "application/vnd.github.machine-man-preview+json")
-
-  # Search for all service hooks on a repository
-  results.each do |hook|
-    if hook.name != 'web'
-      hook_list.push({id: hook.id, hook_name: hook.name})
-    end
-  end
-
-  hook_list
+  erb :index, :locals => {
+    :installations => installations, :installation_selected => installation_selected?}
 end
 
 # Respond to requests to check a commit. The commit URL is included in the
 # url param.
-post "/" do
-  authenticate! if !authenticated?
-  check_access_token
-  
-  install if !installed?
-  
+post "/" do  
   # Select an Installation
-  installation_id = params[:installation_id].to_i
+  puts installation_id = params[:installation_id].to_i
   begin
     result = {repo_list: []}
     
-    response = @client.find_installation_repositories_for_user(installation_id)
     app_token = get_app_token(installation_id)
     @app_client = Octokit::Client.new(:access_token => app_token)
-
+    response = @app_client.list_app_installation_repositories(:accept => @accept_header)
+    
     if response.total_count > 0
       response.repositories.each do |repo|
-        hook_list = get_hook_list(params[:installation_id], repo["full_name"], @app_client)
-        
-        if !hook_list.nil? && hook_list.count > 0
-          return_data = {full_name: repo["full_name"], installation_id: installation_id, hooks: hook_list}
-          result[:repo_list].push(return_data)
-        end
+        return_data = {full_name: repo["full_name"], installation_id: installation_id}
+        result[:repo_list].push(return_data)
       end
     end
     
@@ -221,21 +140,7 @@ post "/" do
   json result
 end
 
-# Handle the redirect from GitHub after someone authorises the app.
-get "/callback" do
-  session_code = params[:code]
-  result = Octokit.exchange_code_for_token \
-    session_code, CLIENT_ID, CLIENT_SECRET, :accept => "application/json"
-  session[:access_token] = result.access_token
-  redirect "/"
-end
-
-# Show the 'How does this work?' page.
-get "/how" do
-  erb :how, :locals => { :authenticated => authenticated? }
-end
-
-# Ping endpoing for uptime check.
+# Ping endpoint for uptime check.
 get "/ping" do
   "pong"
 end

@@ -13,15 +13,12 @@
 <script id="results-template" type="text/x-handlebars-template">
   
   <p id="results-lead" class="lead">
+    <ul class="list-group">
     {{#each repo_list}}
-    <ul class="list-group"><span class="octicon octicon-repo"></span> {{full_name}} 
-      {{#each hooks}}
-      <li class="list-group-item">
-        <a href="https://github.com/github/github-services/tree/master/docs/{{hook_name}}">{{ hook_name }}</a>
-      </li>
-      {{/each}}
-    </ul>
+    <li class="list-group-item"><span class="octicon octicon-repo"></span> {{full_name}}
+    </li>
     {{/each}}
+    </ul>
   </p>
 </script>
 
