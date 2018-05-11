@@ -1,12 +1,12 @@
-# GitHub Contribution Checker App
+# GitHub App Installation Inspector
 
-People :heart: GitHub Contributions. However, it's not always simple to tell why a commit isn't [counted as a contribution][contributions].
+People :heart: GitHub Apps. However, it's not always simple to tell which installations or repositories your App has access to.
 
-This app lets you authenticate with GitHub and check whether a specific commit qualifies as a contribution, by using the [contribution-checker][contribution-checker] library.
+This app lets you iterate over all Accounts that have installed your application and list which repositories they have granted access to.
 
-![app](https://cloud.githubusercontent.com/assets/65057/6320756/b32c9328-bae6-11e4-9ba1-48ced9a5fb6e.png)
+--- 
 
-Created by [@izuzak][izuzak] and [@jdennes][jdennes] at the [Hamburg Hackathon][hamburg-hackathon], June 2014.
+Inspired by code created by [@izuzak][izuzak] and [@jdennes][jdennes] at the [Hamburg Hackathon][hamburg-hackathon], June 2014.
 
 [contributions]: https://help.github.com/articles/why-are-my-contributions-not-showing-up-on-my-profile
 [contribution-checker]: https://github.com/jdennes/contribution-checker
